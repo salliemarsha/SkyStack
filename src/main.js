@@ -8,6 +8,13 @@ const config = {
     height: 800,
     parent: 'app',
     scene: [MainScene],
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 0 }, // We control gravity per object body dynamically
+            debug: false
+        }
+    },
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH

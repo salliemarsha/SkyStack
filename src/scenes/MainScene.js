@@ -11,7 +11,11 @@ export default class MainScene extends Phaser.Scene {
         this.gameState = 'START'; // 'START', 'PLAYING', 'DROPPING', 'GAMEOVER'
     }
 
-    init() {
+    init(data) {
+        // Flag to jump straight to gameplay (on restart)
+        this.startImmediate = data && data.startImmediate;
+        
+        // Reset tracking states cleanly
         this.score = 0;
         this.combo = 0;
         this.currentWidth = 220;
@@ -21,8 +25,9 @@ export default class MainScene extends Phaser.Scene {
         this.cameraTargetScrollY = 0;
         this.highScore = parseInt(localStorage.getItem('skystack_highscore') || '0', 10);
         this.audioCtx = null;
+        this.landingCollider = null;
         
-        // Stars coordinates for cozy background
+        // Setup stars coordinates for twinkling background
         this.stars = [];
         for (let i = 0; i < 25; i++) {
             this.stars.push({
@@ -39,16 +44,16 @@ export default class MainScene extends Phaser.Scene {
         this.gameWidth = 450;
         this.gameHeight = 800;
 
-        // Static background graphics for gradients & stars
-        this.bgGraphics = this.add.graphics().setScrollFactor(0);
+        // Static background graphics (depth 0)
+        this.bgGraphics = this.add.graphics().setScrollFactor(0).setDepth(0);
 
-        // Draw static backdrop silhouettes
+        // Draw static backdrop silhouettes (depth 1)
         this.drawSkylineBackdrop();
 
         // Setup input bindings
         this.input.keyboard.on('keydown-SPACE', () => this.handleAction());
         this.input.on('pointerdown', (pointer) => {
-            // Check if game over overlay restart button was clicked
+            // If the restart button is active, let its button listener handle the click
             if (this.gameState === 'GAMEOVER' && this.restartBtn) {
                 const bounds = this.restartBtn.getBounds();
                 if (bounds.contains(pointer.x, pointer.y)) {
@@ -58,11 +63,15 @@ export default class MainScene extends Phaser.Scene {
             this.handleAction();
         });
 
-        // Initialize UI text overlays
+        // Initialize UI overlays (depths 2, 50)
         this.setupUI();
 
-        // Show start screen
-        this.showStartScreen();
+        // Check if we start the game immediately (from restart) or show the start screen
+        if (this.startImmediate) {
+            this.startGame();
+        } else {
+            this.showStartScreen();
+        }
     }
 
     blendColors(color1, color2, ratio) {
@@ -86,7 +95,7 @@ export default class MainScene extends Phaser.Scene {
         const timeOffset = Math.sin(time / 4500) * 0.04;
         const finalRatio = Phaser.Math.Clamp(heightRatio + timeOffset, 0, 1);
         
-        // Twilight violet gradient shifting to space dark blue
+        // Cozy sunset violet shifting slowly to starry night space
         const topColor = this.blendColors(0x151124, 0x05050a, finalRatio);
         const bottomColor = this.blendColors(0x2f1b34, 0x0e0e18, finalRatio);
 
@@ -94,7 +103,7 @@ export default class MainScene extends Phaser.Scene {
         this.bgGraphics.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
         this.bgGraphics.fillRect(0, 0, this.gameWidth, this.gameHeight);
 
-        // Twinkling stars
+        // Twinkling background stars
         this.stars.forEach(star => {
             const starAlpha = 0.2 + 0.8 * ((Math.sin(time * star.speed + star.alphaOffset) + 1) / 2);
             this.bgGraphics.fillStyle(0xffffff, starAlpha);
@@ -103,9 +112,9 @@ export default class MainScene extends Phaser.Scene {
     }
 
     drawSkylineBackdrop() {
-        const g = this.add.graphics().setScrollFactor(0);
+        const g = this.add.graphics().setScrollFactor(0).setDepth(1);
         
-        // Back silhouettes
+        // Far city silhouettes
         g.fillStyle(0x1b1928, 0.45);
         g.fillRect(15, 680, 75, 120);
         g.fillRect(80, 640, 65, 160);
@@ -114,7 +123,7 @@ export default class MainScene extends Phaser.Scene {
         g.fillRect(310, 630, 80, 170);
         g.fillRect(380, 680, 55, 120);
         
-        // Middle silhouettes
+        // Near city silhouettes
         g.fillStyle(0x12101b, 0.75);
         g.fillRect(-10, 720, 85, 80);
         g.fillRect(65, 695, 80, 105);
@@ -123,7 +132,6 @@ export default class MainScene extends Phaser.Scene {
         g.fillRect(315, 715, 145, 85);
     }
 
-    // Procedural water towers or chimneys
     drawRoofAccessory(graphics, width, color, seedVal) {
         const seed = seedVal * 153.25;
         const rand = (offset = 0) => {
@@ -133,20 +141,20 @@ export default class MainScene extends Phaser.Scene {
         
         const yTop = -BLOCK_HEIGHT / 2;
         
-        // Force thin antenna if width is narrow
+        // Force thin antenna if building gets narrow
         let accessoryType = Math.floor(rand(1) * 3);
         if (width < 45) {
             accessoryType = 0;
         }
         
         if (accessoryType === 0) {
-            // Antenna
+            // Radio Antenna
             graphics.fillStyle(0xcccccc, 1);
             graphics.fillRect(-1.5, yTop - 22, 3, 22);
             graphics.fillStyle(0xff5555, 1);
             graphics.fillCircle(0, yTop - 24, 2.5);
         } else if (accessoryType === 1) {
-            // Air Vents
+            // HVAC Air Vents
             graphics.fillStyle(0x888888, 1);
             graphics.fillRect(-10, yTop - 10, 7, 10);
             graphics.fillRect(3, yTop - 10, 7, 10);
@@ -155,7 +163,7 @@ export default class MainScene extends Phaser.Scene {
             graphics.fillRect(-9, yTop - 10, 5, 1.5);
             graphics.fillRect(4, yTop - 10, 5, 1.5);
         } else {
-            // Mini Water Tower
+            // Rooftop Water Tank
             graphics.fillStyle(0x90a4ae, 1);
             graphics.fillRect(-8, yTop - 15, 16, 12);
             
@@ -168,31 +176,31 @@ export default class MainScene extends Phaser.Scene {
         }
     }
 
-    // Procedural modular skyscraper floor drawer
+    // Procedurally draw building floors onto Graphics
     drawBuildingSection(graphics, width, height, color, seed, isTop = false, isBase = false) {
         graphics.clear();
 
-        // 1. Draw Roof Accessory if active
+        // 1. Draw Rooftop accessory if marked
         if (isTop) {
             this.drawRoofAccessory(graphics, width, color, seed);
         }
 
-        // 2. Render Lobby foundation if base block
+        // 2. Render Lobby entrance layout if base floor
         if (isBase) {
             const baseColor = 0x3d3c45;
             graphics.fillStyle(baseColor, 1);
             graphics.fillRect(-width / 2, -height / 2, width, height);
             
-            // Shadows
+            // Lateral drop shadow
             graphics.fillStyle(0x000000, 0.15);
             graphics.fillRect(width / 2 - 10, -height / 2, 10, height);
             graphics.fillRect(-width / 2, height / 2 - 6, width, 6);
             
-            // Slab ceiling trim
+            // Concrete header trim
             graphics.fillStyle(0xffffff, 0.2);
             graphics.fillRect(-width / 2 - 3, -height / 2, width + 6, 5);
             
-            // Glowing lobby door in center
+            // Glowing lobby glass door
             const doorWidth = Math.min(width - 40, 30);
             if (doorWidth > 10) {
                 graphics.fillStyle(0xfffae0, 0.95);
@@ -204,15 +212,15 @@ export default class MainScene extends Phaser.Scene {
                 graphics.lineBetween(0, height / 2 - 30, 0, height / 2 - 6);
             }
             
-            // Entrance support columns
+            // Concrete column supports
             graphics.fillStyle(0x52515b, 1);
             graphics.fillRect(-width / 2 + 10, -height / 2 + 5, 8, height - 11);
             graphics.fillRect(width / 2 - 18, -height / 2 + 5, 8, height - 11);
             return;
         }
 
-        // 3. Render Normal modular apartment unit
-        // Base structure
+        // 3. Render Normal modular apartment floor
+        // Main block slab
         graphics.fillStyle(color, 1);
         graphics.fillRect(-width / 2, -height / 2, width, height);
 
@@ -221,19 +229,19 @@ export default class MainScene extends Phaser.Scene {
         graphics.fillRect(width / 2 - 10, -height / 2, 10, height);
         graphics.fillRect(-width / 2, height / 2 - 6, width, 6);
 
-        // White concrete top & bottom architectural trims
+        // Ledge trims
         graphics.fillStyle(0xffffff, 0.22);
         graphics.fillRect(-width / 2 - 3, -height / 2, width + 6, 4); // top trim
         graphics.fillRect(-width / 2 - 1, height / 2 - 4, width + 2, 3);  // bottom trim
 
-        // Variation randomizer
+        // Variation seed mapping
         const rand = (offset = 0) => {
             const x = Math.sin(seed + offset) * 10000;
             return x - Math.floor(x);
         };
         const buildingStyle = Math.floor(rand(1) * 3);
 
-        // Dual-row window configuration
+        // Grid of dual-row windows
         const winWidth = 7;
         const winHeight = 10;
         const spacingX = 9;
@@ -252,7 +260,7 @@ export default class MainScene extends Phaser.Scene {
                     const wy = rowY - winHeight / 2;
 
                     if (isLightOn) {
-                        // Cozy glowing window pane
+                        // Glowing lit window pane
                         graphics.fillStyle(0xffe082, 0.95);
                         graphics.fillRect(wx, wy, winWidth, winHeight);
 
@@ -265,11 +273,11 @@ export default class MainScene extends Phaser.Scene {
                         graphics.fillRect(wx, wy, winWidth, winHeight);
                     }
 
-                    // Window border frame
+                    // Window frame
                     graphics.lineStyle(1, 0x000000, 0.2);
                     graphics.strokeRect(wx, wy, winWidth, winHeight);
 
-                    // Procedural balconies on bottom rows
+                    // Procedural balconies
                     if (buildingStyle === 1 && rIndex === 1 && c % 2 === 0) {
                         graphics.fillStyle(0xdddddd, 0.85);
                         graphics.fillRect(wx - 2, wy + 5, winWidth + 4, 6);
@@ -288,35 +296,41 @@ export default class MainScene extends Phaser.Scene {
         graphics.blockColor = color;
         graphics.blockWidth = width;
         graphics.blockSeed = seed !== null ? seed : Math.random() * 10000;
+        
+        // CRITICAL BUG FIX: Ensure the building shapes are drawn IMMEDIATELY when block is created!
+        // This ensures moving blocks are visible right away upon spawn.
+        this.drawBuildingSection(graphics, width, height, color, graphics.blockSeed, false, false);
+        
         return graphics;
     }
 
     setupUI() {
-        // Subtle background giant height score
+        // Subtle giant score (depth 2)
         this.scoreText = this.add.text(225, 230, '0', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '180px',
             fontWeight: '900',
             color: 'rgba(255, 255, 255, 0.05)'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(2);
         this.scoreText.setVisible(false);
 
-        // Logo Title
+        // Logo Title (depth 50)
         this.titleText = this.add.text(225, 290, 'SKYSTACK', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '44px',
             fontWeight: '900',
             color: '#ffffff',
             letterSpacing: '5px'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
 
+        // Subtitle instructions (depth 50)
         this.subtitleText = this.add.text(225, 360, 'TAP OR SPACE TO BUILD', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '13px',
             fontWeight: 'bold',
             color: 'rgba(255, 255, 255, 0.45)',
             letterSpacing: '1px'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
 
         this.tweens.add({
             targets: this.subtitleText,
@@ -327,13 +341,13 @@ export default class MainScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // Top-left dashboard best score
+        // Top-left dashboard best score (depth 50)
         this.highScoreDashboard = this.add.text(25, 25, `BEST: ${this.highScore}`, {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '13px',
             fontWeight: 'bold',
             color: 'rgba(255, 255, 255, 0.4)'
-        }).setScrollFactor(0);
+        }).setScrollFactor(0).setDepth(50);
     }
 
     showStartScreen() {
@@ -348,7 +362,7 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.scrollY = 0;
         this.cameraTargetScrollY = 0;
 
-        // Clear and redraw starting base
+        // Clear and draw starting base
         this.placedBlocks.forEach(b => b.rect.destroy());
         this.placedBlocks = [];
         
@@ -376,7 +390,7 @@ export default class MainScene extends Phaser.Scene {
         this.subtitleText.setVisible(false);
         this.highScoreDashboard.setVisible(false);
         
-        // Reset camera and tracking variables cleanly on restart
+        // Reset camera and tracking variables cleanly
         this.cameras.main.scrollY = 0;
         this.cameraTargetScrollY = 0;
         this.score = 0;
@@ -385,7 +399,7 @@ export default class MainScene extends Phaser.Scene {
         this.scoreText.setVisible(true);
         this.scoreText.setText('0');
 
-        // Reset building stacks
+        // Clear stack list
         this.placedBlocks.forEach(b => b.rect.destroy());
         this.placedBlocks = [];
 
@@ -394,11 +408,12 @@ export default class MainScene extends Phaser.Scene {
             this.movingBlock = null;
         }
 
-        // Add Base concrete lobby block
+        // Add base concrete lobby block
         this.currentWidth = 220;
         const color = this.getRandomPastelColor(0);
         this.addPlacedBlock(225, BASE_Y, this.currentWidth, color);
 
+        // Spawn first moving block immediately
         this.spawnBlock();
     }
 
@@ -411,46 +426,82 @@ export default class MainScene extends Phaser.Scene {
 
         const color = this.getRandomPastelColor(this.placedBlocks.length);
 
-        // Alternating spawn sides
+        // Alternating spawn directions
         const startFromLeft = this.placedBlocks.length % 2 === 0;
         const startX = startFromLeft ? -this.currentWidth / 2 : 450 + this.currentWidth / 2;
         this.movingDirection = startFromLeft ? 1 : -1;
 
+        // Create moving floor (depth 12)
         this.movingBlock = this.createBuildingBlock(startX, spawnY, this.currentWidth, BLOCK_HEIGHT, color);
+        this.movingBlock.setDepth(12);
+
+        // Enable Arcade Physics for the moving block
+        this.physics.add.existing(this.movingBlock);
+        this.movingBlock.body.setAllowGravity(false);
+        
+        // Match boundary offsets precisely
+        this.movingBlock.body.setSize(this.currentWidth, BLOCK_HEIGHT);
+        this.movingBlock.body.setOffset(-this.currentWidth / 2, -BLOCK_HEIGHT / 2);
+
+        // Set initial velocity
+        const baseSpeed = 330;
+        const speedMultiplier = Math.min(1 + (this.score * 0.04), 2.2);
+        const speed = baseSpeed * speedMultiplier;
+        this.movingBlock.body.setVelocityX(speed * this.movingDirection);
     }
 
     dropBlock() {
         if (!this.movingBlock || this.gameState !== 'PLAYING') return;
 
+        // Transition status
         this.gameState = 'DROPPING';
 
-        const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
-        const targetY = topBlock.y - BLOCK_HEIGHT;
+        // Stop horizontal translation
+        this.movingBlock.body.setVelocityX(0);
 
-        // Snappy vertical drop mimicking gravity acceleration
-        this.tweens.add({
-            targets: this.movingBlock,
-            y: targetY,
-            duration: 260,
-            ease: 'Quad.easeIn',
-            onComplete: () => {
-                this.handleBlockLanding();
-            }
-        });
+        // Turn on physics gravity Y pull dynamically to allow gravity drops
+        this.movingBlock.body.setAllowGravity(true);
+        this.movingBlock.body.setGravityY(1600); //snappy weighting Y gravity
+
+        // Add collider between the falling block and the top block of the stack
+        const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
+        this.landingCollider = this.physics.add.collider(
+            this.movingBlock,
+            topBlock.rect,
+            () => this.handleBlockLanding(),
+            null,
+            this
+        );
     }
 
     handleBlockLanding() {
+        // Destroy landing collider on trigger
+        if (this.landingCollider) {
+            this.landingCollider.destroy();
+            this.landingCollider = null;
+        }
+
         const block = this.movingBlock;
         this.movingBlock = null;
 
         const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
+        
+        // Stop physics body Y movements immediately
+        if (block && block.body) {
+            block.body.stop();
+            block.body.enable = false;
+        }
+
+        // Align coordinates flush to avoid landing sub-pixel overlaps
+        block.y = topBlock.rect.y - BLOCK_HEIGHT;
+
         const success = this.sliceBlock(block, topBlock);
 
         if (success) {
             this.score++;
             this.scoreText.setText(this.score.toString());
 
-            // Camera follow: tracks tower and centers when top goes above threshold coordinate
+            // camera follow tracking
             const newTopBlock = this.placedBlocks[this.placedBlocks.length - 1];
             if (newTopBlock.y < VIEWPORT_TARGET_Y) {
                 this.cameraTargetScrollY = newTopBlock.y - VIEWPORT_TARGET_Y;
@@ -458,19 +509,20 @@ export default class MainScene extends Phaser.Scene {
                 this.cameraTargetScrollY = 0;
             }
 
-            // Return to playing state and spawn next floor
             this.gameState = 'PLAYING';
+            
+            // Automatically spawn next block in sequence
             this.spawnBlock();
         }
     }
 
     applyLandingImpact(rect) {
-        // Squeeze & stretch impact tween to make landing feel heavy & satisfying
+        // Squash impact animations
         this.tweens.add({
             targets: rect,
             scaleY: 0.84,
             scaleX: 1.05,
-            y: rect.y + 4.0, // Compensates bottom coordinate shift on scale
+            y: rect.y + 4.0, 
             yoyo: true,
             duration: 90,
             ease: 'Quad.easeInOut'
@@ -481,7 +533,7 @@ export default class MainScene extends Phaser.Scene {
         const diff = movingBlock.x - topBlock.x;
         const targetY = topBlock.y - BLOCK_HEIGHT;
 
-        // 1. Perfect Snap Check (offset <= 3.5px)
+        // 1. Perfect Snap Check
         if (Math.abs(diff) <= 3.5) {
             this.handlePerfectPlacement(topBlock, movingBlock);
             return true;
@@ -493,7 +545,7 @@ export default class MainScene extends Phaser.Scene {
             return false;
         }
 
-        // 3. Normal Slice Placement
+        // 3. Normal Slice stack
         const newWidth = this.currentWidth - Math.abs(diff);
         const newX = topBlock.x + (diff / 2);
 
@@ -505,20 +557,19 @@ export default class MainScene extends Phaser.Scene {
             sliceX = newX - (newWidth / 2) - (sliceWidth / 2);
         }
 
-        // Spawn falling building block debris
+        // Spawn falling debris slice (depth 11)
         this.createFallingSlice(sliceX, targetY, sliceWidth, movingBlock.blockColor, diff, movingBlock.blockSeed);
 
-        // Tactile hit impact shake
+        // Tactile hit camera shake
         this.cameras.main.shake(70, 0.005);
 
         // Reset combo
         this.currentWidth = newWidth;
         this.combo = 0;
 
-        // Add permanent unit segment
+        // Stack segment (depth 10)
         const placed = this.addPlacedBlock(newX, targetY, newWidth, movingBlock.blockColor, movingBlock.blockSeed);
         
-        // Trigger squeeze feedback
         this.applyLandingImpact(placed);
 
         this.playBeep(false);
@@ -534,7 +585,7 @@ export default class MainScene extends Phaser.Scene {
         this.playBeep(true);
         this.showFloatingText(`PERFECT! x${this.combo}`, newX, targetY - 25, '#00ffcc');
 
-        // Apartment width recovery bonus
+        // Combo expansion
         if (this.combo > 0 && this.combo % 3 === 0) {
             const prevWidth = this.currentWidth;
             this.currentWidth = Math.min(220, this.currentWidth + 15);
@@ -543,13 +594,14 @@ export default class MainScene extends Phaser.Scene {
             }
         }
 
-        // Stack perfect segment
+        // Stack perfect segment (depth 10)
         const placed = this.addPlacedBlock(newX, targetY, this.currentWidth, movingBlock.blockColor, movingBlock.blockSeed);
         
         this.applyLandingImpact(placed);
 
-        // White glowing overlay flash
+        // Highlight flash
         const flash = this.add.rectangle(newX, targetY, this.currentWidth, BLOCK_HEIGHT, 0xffffff);
+        flash.setDepth(11);
         this.tweens.add({
             targets: flash,
             alpha: 0,
@@ -566,33 +618,35 @@ export default class MainScene extends Phaser.Scene {
         // Large screen shake on total miss
         this.cameras.main.shake(250, 0.016);
         
-        // Building falls down off-screen under simulated gravity
-        this.tweens.add({
-            targets: movingBlock,
-            y: movingBlock.y + 600,
-            angle: this.movingDirection * 45,
-            alpha: 0,
-            duration: 900,
-            ease: 'Cubic.easeIn',
-            onComplete: () => {
-                movingBlock.destroy();
-                this.triggerGameOver();
-            }
+        // Disable collision body but let it fall naturally using physics gravity + angular spin
+        if (movingBlock.body) {
+            movingBlock.body.checkCollision.none = true;
+            movingBlock.body.setAngularVelocity(this.movingDirection * 180);
+        }
+        
+        // Trigger game over after 800ms
+        this.time.delayedCall(800, () => {
+            movingBlock.destroy();
+            this.triggerGameOver();
         });
     }
 
     createFallingSlice(x, y, width, color, diff, seed) {
         const slice = this.createBuildingBlock(x, y, width, BLOCK_HEIGHT, color, seed);
+        slice.setDepth(11);
         
-        this.tweens.add({
-            targets: slice,
-            y: y + 600,
-            x: x + (diff > 0 ? 80 : -80),
-            angle: diff > 0 ? 85 : -85,
-            alpha: 0,
-            duration: 900,
-            ease: 'Cubic.easeIn',
-            onComplete: () => slice.destroy()
+        // Enable physics gravity to fall down
+        this.physics.add.existing(slice);
+        slice.body.setAllowGravity(true);
+        
+        // Throw slice with horizontal impulse and angular rotation
+        const pushX = diff > 0 ? 150 : -150;
+        slice.body.setVelocity(pushX, -120);
+        slice.body.setAngularVelocity(diff > 0 ? 180 : -180);
+        
+        // Destroy block after 1.2s
+        this.time.delayedCall(1200, () => {
+            slice.destroy();
         });
     }
 
@@ -608,9 +662,16 @@ export default class MainScene extends Phaser.Scene {
         }
 
         const rect = this.createBuildingBlock(x, y, width, BLOCK_HEIGHT, color, seed);
+        rect.setDepth(10);
+        
+        // Create static Arcade Physics body to detect future collisions
+        this.physics.add.existing(rect, true);
+        rect.body.setSize(width, BLOCK_HEIGHT);
+        rect.body.setOffset(-width / 2, -BLOCK_HEIGHT / 2);
+
         this.placedBlocks.push({ x, y, width, color, rect, isTop: true });
 
-        // Draw the newly stacked block with top details active
+        // Draw new stacked floor with top details
         this.drawBuildingSection(rect, width, BLOCK_HEIGHT, color, rect.blockSeed, true, isBase);
 
         return rect;
@@ -618,17 +679,17 @@ export default class MainScene extends Phaser.Scene {
 
     showFloatingText(msg, x, y, color) {
         const txt = this.add.text(x, y, msg, {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '15px',
             fontWeight: '900',
             color: color,
             stroke: '#111115',
             strokeThickness: 3
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(20);
 
         txt.setScale(0.3);
 
-        // Elastic popup bounce
+        // Elastic pop
         this.tweens.add({
             targets: txt,
             scale: 1,
@@ -637,7 +698,7 @@ export default class MainScene extends Phaser.Scene {
             ease: 'Back.easeOut'
         });
 
-        // Floating fade away
+        // Floating fade
         this.tweens.add({
             targets: txt,
             y: y - 80,
@@ -663,66 +724,69 @@ export default class MainScene extends Phaser.Scene {
     showGameOverModal() {
         this.gameOverUI = [];
 
-        // Semi-transparent dark rounded container
+        // Semi-transparent dark rounded container (depth 100)
         const modal = this.add.graphics();
         modal.fillStyle(0x13111c, 0.95);
         modal.lineStyle(2, 0xff79c6, 0.15);
         modal.fillRoundedRect(65, 200, 320, 380, 16);
         modal.strokeRoundedRect(65, 200, 320, 380, 16);
         modal.setScrollFactor(0);
+        modal.setDepth(100);
         this.gameOverUI.push(modal);
 
-        // Game Over text Header
+        // Header Title (depth 101)
         const gameOverTitle = this.add.text(225, 250, 'GAME OVER', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '32px',
             fontWeight: '900',
             color: '#ff5555',
             letterSpacing: '2px'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
         this.gameOverUI.push(gameOverTitle);
 
-        // Score display
+        // Score display (depth 101)
         const scoreVal = this.add.text(225, 330, this.score.toString(), {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '76px',
             fontWeight: '900',
             color: '#ffffff'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
         this.gameOverUI.push(scoreVal);
 
         const scoreLabel = this.add.text(225, 388, 'HEIGHT STACKED', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '11px',
             fontWeight: 'bold',
             color: 'rgba(255, 255, 255, 0.35)',
             letterSpacing: '1px'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
         this.gameOverUI.push(scoreLabel);
 
-        // High Score
+        // High Score (depth 101)
         const bestScore = this.add.text(225, 430, `BEST HIGH: ${this.highScore}`, {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: 'Arial, sans-serif',
             fontSize: '16px',
             fontWeight: 'bold',
             color: '#50fa7b',
             letterSpacing: '0.5px'
-        }).setOrigin(0.5).setScrollFactor(0);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
         this.gameOverUI.push(bestScore);
 
-        // Play Again button
+        // Play Again button (depth 101)
         const restartBtn = this.add.rectangle(225, 510, 200, 50, 0xff79c6)
             .setOrigin(0.5)
             .setScrollFactor(0)
-            .setInteractive({ useHandCursor: true });
+            .setInteractive({ useHandCursor: true })
+            .setDepth(101);
 
-        const restartTxt = this.add.text(225, 510, 'PLAY AGAIN', {
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            fontSize: '16px',
+        // Text label: Arial for guaranteed font rendering (depth 102)
+        const restartTxt = this.add.text(225, 510, 'RESTART', {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '18px',
             fontWeight: 'bold',
             color: '#ffffff',
-            letterSpacing: '0.5px'
-        }).setOrigin(0.5).setScrollFactor(0);
+            letterSpacing: '1px'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
 
         restartBtn.on('pointerover', () => {
             restartBtn.setScale(1.05);
@@ -735,20 +799,15 @@ export default class MainScene extends Phaser.Scene {
         });
 
         restartBtn.on('pointerdown', () => {
-            // Remove GameOver Screen UI components
-            this.gameOverUI.forEach(el => el.destroy());
-            restartBtn.destroy();
-            restartTxt.destroy();
-            this.restartBtn = null;
-
-            // Trigger complete clean game reset
-            this.startGame();
+            // CRITICAL BUG FIX: Reinitialize the scene correctly using Phaser's built-in restart
+            // Passes parameter so init() knows to bypass the start screen and begin play immediately
+            this.scene.restart({ startImmediate: true });
         });
 
         this.restartBtn = restartBtn;
         this.gameOverUI.push(restartTxt);
 
-        // Fade in modal
+        // Fade in modal components
         this.gameOverUI.forEach(el => el.alpha = 0);
         restartBtn.alpha = 0;
 
@@ -761,11 +820,15 @@ export default class MainScene extends Phaser.Scene {
     }
 
     initAudio() {
-        if (this.audioCtx) return;
+        if (window.skystack_audioCtx) {
+            this.audioCtx = window.skystack_audioCtx;
+            return;
+        }
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             if (AudioContext) {
-                this.audioCtx = new AudioContext();
+                window.skystack_audioCtx = new AudioContext();
+                this.audioCtx = window.skystack_audioCtx;
             }
         } catch (e) {
             console.warn("AudioContext init skipped.");
@@ -822,15 +885,34 @@ export default class MainScene extends Phaser.Scene {
             const speedMultiplier = Math.min(1 + (this.score * 0.04), 2.2);
             const speed = baseSpeed * speedMultiplier;
 
-            this.movingBlock.x += speed * this.movingDirection * (delta / 1000);
+            // Set body velocity for Arcade Physics
+            this.movingBlock.body.setVelocityX(speed * this.movingDirection);
 
             const halfWidth = this.currentWidth / 2;
-            if (this.movingDirection === 1 && this.movingBlock.x >= 450 + halfWidth) {
-                this.movingBlock.x = 450 + halfWidth;
+            if (this.movingDirection === 1 && this.movingBlock.x >= 450 - halfWidth) {
+                this.movingBlock.x = 450 - halfWidth;
                 this.movingDirection = -1;
-            } else if (this.movingDirection === -1 && this.movingBlock.x <= -halfWidth) {
-                this.movingBlock.x = -halfWidth;
+                this.movingBlock.body.setVelocityX(-speed);
+            } else if (this.movingDirection === -1 && this.movingBlock.x <= halfWidth) {
+                this.movingBlock.x = halfWidth;
                 this.movingDirection = 1;
+                this.movingBlock.body.setVelocityX(speed);
+            }
+        }
+
+        // Automatic off-screen detection: check if a dropping floor block completely missed
+        if (this.gameState === 'DROPPING' && this.movingBlock) {
+            const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
+            if (this.movingBlock.y > topBlock.rect.y + 120) {
+                const block = this.movingBlock;
+                this.movingBlock = null;
+                
+                if (this.landingCollider) {
+                    this.landingCollider.destroy();
+                    this.landingCollider = null;
+                }
+                
+                this.handleMissedPlacement(block);
             }
         }
 
