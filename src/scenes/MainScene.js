@@ -25,7 +25,8 @@ export default class MainScene extends Phaser.Scene {
         this.cameraTargetScrollY = 0;
         this.highScore = parseInt(localStorage.getItem('skystack_highscore') || '0', 10);
         this.audioCtx = null;
-        this.landingCollider = null;
+        this.startButton = null;
+        this.startButtonText = null;
         
         // Setup stars coordinates for twinkling background
         this.stars = [];
@@ -53,7 +54,7 @@ export default class MainScene extends Phaser.Scene {
         // Setup input bindings
         this.input.keyboard.on('keydown-SPACE', () => this.handleAction());
         this.input.on('pointerdown', (pointer) => {
-            // If the restart button is active, let its button listener handle the click
+            // If we are in Game Over state, don't trigger drops if they clicked play again
             if (this.gameState === 'GAMEOVER' && this.restartBtn) {
                 const bounds = this.restartBtn.getBounds();
                 if (bounds.contains(pointer.x, pointer.y)) {
@@ -95,7 +96,7 @@ export default class MainScene extends Phaser.Scene {
         const timeOffset = Math.sin(time / 4500) * 0.04;
         const finalRatio = Phaser.Math.Clamp(heightRatio + timeOffset, 0, 1);
         
-        // Cozy sunset violet shifting slowly to starry night space
+        // Cozy sunset violet gradient shifting slowly to starry night space
         const topColor = this.blendColors(0x151124, 0x05050a, finalRatio);
         const bottomColor = this.blendColors(0x2f1b34, 0x0e0e18, finalRatio);
 
@@ -297,8 +298,7 @@ export default class MainScene extends Phaser.Scene {
         graphics.blockWidth = width;
         graphics.blockSeed = seed !== null ? seed : Math.random() * 10000;
         
-        // CRITICAL BUG FIX: Ensure the building shapes are drawn IMMEDIATELY when block is created!
-        // This ensures moving blocks are visible right away upon spawn.
+        // Draw shapes immediately on create so they are visible on spawn
         this.drawBuildingSection(graphics, width, height, color, graphics.blockSeed, false, false);
         
         return graphics;
@@ -323,7 +323,7 @@ export default class MainScene extends Phaser.Scene {
             letterSpacing: '5px'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(50);
 
-        // Subtitle instructions (depth 50)
+        // Subtitle text (depth 50)
         this.subtitleText = this.add.text(225, 360, 'TAP OR SPACE TO BUILD', {
             fontFamily: 'Arial, sans-serif',
             fontSize: '13px',
@@ -353,7 +353,7 @@ export default class MainScene extends Phaser.Scene {
     showStartScreen() {
         this.gameState = 'START';
         this.titleText.setVisible(true);
-        this.subtitleText.setVisible(true);
+        this.subtitleText.setVisible(false); // We hide sub instruction, as we have a clear button instead
         this.scoreText.setVisible(false);
         this.highScoreDashboard.setVisible(true);
         this.highScoreDashboard.setText(`BEST: ${this.highScore}`);
@@ -362,7 +362,7 @@ export default class MainScene extends Phaser.Scene {
         this.cameras.main.scrollY = 0;
         this.cameraTargetScrollY = 0;
 
-        // Clear and draw starting base
+        // Clear stack and render visual lobby preview at bottom
         this.placedBlocks.forEach(b => b.rect.destroy());
         this.placedBlocks = [];
         
@@ -374,12 +374,46 @@ export default class MainScene extends Phaser.Scene {
         this.currentWidth = 220;
         const color = this.getRandomPastelColor(0);
         this.addPlacedBlock(225, BASE_Y, this.currentWidth, color);
+
+        // PART 2: START GAME BUTTON
+        // Draw centered interactive Start Game button
+        this.startButton = this.add.rectangle(225, 450, 200, 50, 0xff79c6)
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setInteractive({ useHandCursor: true })
+            .setDepth(60);
+
+        this.startButtonText = this.add.text(225, 450, 'START GAME', {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            color: '#ffffff',
+            letterSpacing: '1px'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(61);
+
+        this.startButton.on('pointerover', () => {
+            this.startButton.setScale(1.05);
+            this.startButtonText.setScale(1.05);
+        });
+
+        this.startButton.on('pointerout', () => {
+            this.startButton.setScale(1);
+            this.startButtonText.setScale(1);
+        });
+
+        this.startButton.on('pointerdown', () => {
+            // Cleanup button elements and start the game!
+            this.startButton.destroy();
+            this.startButtonText.destroy();
+            this.startButton = null;
+            this.startButtonText = null;
+            this.startGame();
+        });
     }
 
     handleAction() {
-        if (this.gameState === 'START') {
-            this.startGame();
-        } else if (this.gameState === 'PLAYING') {
+        // Pauses drops/spawning when on Start menu screen
+        if (this.gameState === 'PLAYING') {
             this.dropBlock();
         }
     }
@@ -389,8 +423,18 @@ export default class MainScene extends Phaser.Scene {
         this.titleText.setVisible(false);
         this.subtitleText.setVisible(false);
         this.highScoreDashboard.setVisible(false);
+
+        // Destroy any leftover button instances if they exist (restart defense)
+        if (this.startButton) {
+            this.startButton.destroy();
+            this.startButton = null;
+        }
+        if (this.startButtonText) {
+            this.startButtonText.destroy();
+            this.startButtonText = null;
+        }
         
-        // Reset camera and tracking variables cleanly
+        // Reset variables
         this.cameras.main.scrollY = 0;
         this.cameraTargetScrollY = 0;
         this.score = 0;
@@ -399,7 +443,7 @@ export default class MainScene extends Phaser.Scene {
         this.scoreText.setVisible(true);
         this.scoreText.setText('0');
 
-        // Clear stack list
+        // Clear stack
         this.placedBlocks.forEach(b => b.rect.destroy());
         this.placedBlocks = [];
 
@@ -413,7 +457,7 @@ export default class MainScene extends Phaser.Scene {
         const color = this.getRandomPastelColor(0);
         this.addPlacedBlock(225, BASE_Y, this.currentWidth, color);
 
-        // Spawn first moving block immediately
+        // Spawn first moving block
         this.spawnBlock();
     }
 
@@ -426,20 +470,18 @@ export default class MainScene extends Phaser.Scene {
 
         const color = this.getRandomPastelColor(this.placedBlocks.length);
 
-        // Alternating spawn directions
         const startFromLeft = this.placedBlocks.length % 2 === 0;
         const startX = startFromLeft ? -this.currentWidth / 2 : 450 + this.currentWidth / 2;
         this.movingDirection = startFromLeft ? 1 : -1;
 
-        // Create moving floor (depth 12)
+        // Create moving block (depth 12)
         this.movingBlock = this.createBuildingBlock(startX, spawnY, this.currentWidth, BLOCK_HEIGHT, color);
         this.movingBlock.setDepth(12);
 
-        // Enable Arcade Physics for the moving block
+        // Enable Arcade Physics for movement
         this.physics.add.existing(this.movingBlock);
         this.movingBlock.body.setAllowGravity(false);
         
-        // Match boundary offsets precisely
         this.movingBlock.body.setSize(this.currentWidth, BLOCK_HEIGHT);
         this.movingBlock.body.setOffset(-this.currentWidth / 2, -BLOCK_HEIGHT / 2);
 
@@ -453,40 +495,23 @@ export default class MainScene extends Phaser.Scene {
     dropBlock() {
         if (!this.movingBlock || this.gameState !== 'PLAYING') return;
 
-        // Transition status
         this.gameState = 'DROPPING';
 
         // Stop horizontal translation
         this.movingBlock.body.setVelocityX(0);
 
-        // Turn on physics gravity Y pull dynamically to allow gravity drops
+        // Enable physics gravity dynamically to pull it down weightily
         this.movingBlock.body.setAllowGravity(true);
-        this.movingBlock.body.setGravityY(1600); //snappy weighting Y gravity
-
-        // Add collider between the falling block and the top block of the stack
-        const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
-        this.landingCollider = this.physics.add.collider(
-            this.movingBlock,
-            topBlock.rect,
-            () => this.handleBlockLanding(),
-            null,
-            this
-        );
+        this.movingBlock.body.setGravityY(1600);
     }
 
     handleBlockLanding() {
-        // Destroy landing collider on trigger
-        if (this.landingCollider) {
-            this.landingCollider.destroy();
-            this.landingCollider = null;
-        }
-
         const block = this.movingBlock;
         this.movingBlock = null;
 
         const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
         
-        // Stop physics body Y movements immediately
+        // Stop physics body movement immediately
         if (block && block.body) {
             block.body.stop();
             block.body.enable = false;
@@ -510,14 +535,11 @@ export default class MainScene extends Phaser.Scene {
             }
 
             this.gameState = 'PLAYING';
-            
-            // Automatically spawn next block in sequence
             this.spawnBlock();
         }
     }
 
     applyLandingImpact(rect) {
-        // Squash impact animations
         this.tweens.add({
             targets: rect,
             scaleY: 0.84,
@@ -533,7 +555,7 @@ export default class MainScene extends Phaser.Scene {
         const diff = movingBlock.x - topBlock.x;
         const targetY = topBlock.y - BLOCK_HEIGHT;
 
-        // 1. Perfect Snap Check
+        // 1. Perfect Snap Check (offset <= 3.5px)
         if (Math.abs(diff) <= 3.5) {
             this.handlePerfectPlacement(topBlock, movingBlock);
             return true;
@@ -799,8 +821,6 @@ export default class MainScene extends Phaser.Scene {
         });
 
         restartBtn.on('pointerdown', () => {
-            // CRITICAL BUG FIX: Reinitialize the scene correctly using Phaser's built-in restart
-            // Passes parameter so init() knows to bypass the start screen and begin play immediately
             this.scene.restart({ startImmediate: true });
         });
 
@@ -900,19 +920,27 @@ export default class MainScene extends Phaser.Scene {
             }
         }
 
-        // Automatic off-screen detection: check if a dropping floor block completely missed
+        // PART 1: FIX STACKING COLLISION LOGIC
+        // Direct Y coordinate monitor in update loop replacing flaky physics colliders
         if (this.gameState === 'DROPPING' && this.movingBlock) {
             const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
-            if (this.movingBlock.y > topBlock.rect.y + 120) {
-                const block = this.movingBlock;
-                this.movingBlock = null;
+            const targetY = topBlock.y - BLOCK_HEIGHT;
+            
+            // Check if the falling block has reached or passed the target stack Y level
+            if (this.movingBlock.y >= targetY) {
+                // Snap y position exactly to the target stack level
+                this.movingBlock.y = targetY;
                 
-                if (this.landingCollider) {
-                    this.landingCollider.destroy();
-                    this.landingCollider = null;
+                // Check if it's a complete miss
+                const diff = this.movingBlock.x - topBlock.x;
+                if (Math.abs(diff) >= this.currentWidth) {
+                    const block = this.movingBlock;
+                    this.movingBlock = null;
+                    this.handleMissedPlacement(block);
+                } else {
+                    // Touched the stack successfully! Snapped and stopped.
+                    this.handleBlockLanding();
                 }
-                
-                this.handleMissedPlacement(block);
             }
         }
 
