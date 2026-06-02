@@ -53,11 +53,9 @@ export default class MainScene extends Phaser.Scene {
 
         // Setup input bindings
         this.input.keyboard.on('keydown-SPACE', () => this.handleAction());
-        this.input.on('pointerdown', (pointer) => {
-            if (this.gameState === STATES.GAMEOVER && this.tryAgainBtn) {
-                const bounds = this.tryAgainBtn.getBounds();
-                if (bounds.contains(pointer.x, pointer.y)) return;
-            }
+        this.input.on('pointerdown', (pointer, currentlyOver) => {
+            // Ignore if clicking on a UI button (any interactive object)
+            if (currentlyOver.length > 0) return;
             this.handleAction();
         });
 
@@ -188,6 +186,7 @@ export default class MainScene extends Phaser.Scene {
         });
 
         btnBg.on('pointerdown', () => {
+            console.log("START pressed");
             this.startGame();
         });
 
@@ -263,10 +262,10 @@ export default class MainScene extends Phaser.Scene {
         });
 
         btnBg.on('pointerdown', () => {
+            console.log("TRY AGAIN pressed");
             this.scene.restart({ startImmediate: true });
         });
 
-        this.tryAgainBtn = btnBg;
         this.gameOverCard.add([cardBg, title, finalScoreLabel, this.finalScoreText, this.bestScoreText, restartBtn]);
         this.gameOverContainer.add([overlay, this.gameOverCard]);
         this.gameOverContainer.setVisible(false);
@@ -383,6 +382,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     startGame() {
+        console.log("startGame called");
         this.resetGameLogic();
         this.hideStartScreen();
         this.hideGameOverScreen();
@@ -393,6 +393,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     gameOver() {
+        console.log("gameOver triggered");
         this.gameState = STATES.GAMEOVER;
         
         if (this.score > this.highScore) {
@@ -406,12 +407,14 @@ export default class MainScene extends Phaser.Scene {
     // --- GAMEPLAY LOGIC ---
 
     handleAction() {
+        console.log("handleAction, gameState =", this.gameState);
         if (this.gameState === STATES.PLAYING) {
             this.dropBlock();
         }
     }
 
     spawnBlock() {
+        console.log("spawnBlock called, gameState =", this.gameState);
         if (this.gameState !== STATES.PLAYING) return;
 
         const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
@@ -444,6 +447,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     dropBlock() {
+        console.log("dropBlock called");
         if (!this.movingBlock || this.gameState !== STATES.PLAYING) return;
         this.gameState = STATES.DROPPING;
         this.movingBlock.body.setVelocityX(0);
