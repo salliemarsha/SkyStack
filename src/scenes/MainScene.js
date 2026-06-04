@@ -31,10 +31,12 @@ export default class MainScene extends Phaser.Scene {
         this.audioCtx = null;
         
         this.stars = [];
+        const w = this.cameras.main ? this.cameras.main.width : 450;
+        const h = this.cameras.main ? this.cameras.main.height : 800;
         for (let i = 0; i < 25; i++) {
             this.stars.push({
-                x: Math.random() * 450,
-                y: Math.random() * 800,
+                x: Math.random() * w,
+                y: Math.random() * h,
                 size: Math.random() * 1.5 + 0.5,
                 alphaOffset: Math.random() * Math.PI * 2,
                 speed: 0.001 + Math.random() * 0.002
@@ -185,8 +187,7 @@ export default class MainScene extends Phaser.Scene {
             btnBg.setFillStyle(0xff79c6);
         });
 
-        btnBg.on('pointerdown', () => {
-            console.log("START pressed");
+        btnBg.on('pointerup', () => {
             this.startGame();
         });
 
@@ -261,8 +262,7 @@ export default class MainScene extends Phaser.Scene {
             restartBtn.setScale(1);
         });
 
-        btnBg.on('pointerdown', () => {
-            console.log("TRY AGAIN pressed");
+        btnBg.on('pointerup', () => {
             this.scene.restart({ startImmediate: true });
         });
 
@@ -292,8 +292,8 @@ export default class MainScene extends Phaser.Scene {
 
         // Add base concrete lobby block
         const color = this.getRandomPastelColor(0);
-        // Use 225 as the center of the 450 width game
-        this.addPlacedBlock(225, BASE_Y, this.currentWidth, color);
+        const { centerX } = this.cameras.main;
+        this.addPlacedBlock(centerX, BASE_Y, this.currentWidth, color);
     }
 
     showStartScreen() {
@@ -382,7 +382,6 @@ export default class MainScene extends Phaser.Scene {
     }
 
     startGame() {
-        console.log("startGame called");
         this.resetGameLogic();
         this.hideStartScreen();
         this.hideGameOverScreen();
@@ -393,7 +392,6 @@ export default class MainScene extends Phaser.Scene {
     }
 
     gameOver() {
-        console.log("gameOver triggered");
         this.gameState = STATES.GAMEOVER;
         
         if (this.score > this.highScore) {
@@ -407,14 +405,12 @@ export default class MainScene extends Phaser.Scene {
     // --- GAMEPLAY LOGIC ---
 
     handleAction() {
-        console.log("handleAction, gameState =", this.gameState);
         if (this.gameState === STATES.PLAYING) {
             this.dropBlock();
         }
     }
 
     spawnBlock() {
-        console.log("spawnBlock called, gameState =", this.gameState);
         if (this.gameState !== STATES.PLAYING) return;
 
         const topBlock = this.placedBlocks[this.placedBlocks.length - 1];
@@ -427,9 +423,10 @@ export default class MainScene extends Phaser.Scene {
         const spawnY = targetY - DROP_HEIGHT;
 
         const color = this.getRandomPastelColor(this.placedBlocks.length);
+        const { width } = this.cameras.main;
 
         const startFromLeft = this.placedBlocks.length % 2 === 0;
-        const startX = startFromLeft ? -this.currentWidth / 2 : 450 + this.currentWidth / 2;
+        const startX = startFromLeft ? -this.currentWidth / 2 : width + this.currentWidth / 2;
         this.movingDirection = startFromLeft ? 1 : -1;
 
         this.movingBlock = this.createBuildingBlock(startX, spawnY, this.currentWidth, BLOCK_HEIGHT, color);
@@ -447,7 +444,6 @@ export default class MainScene extends Phaser.Scene {
     }
 
     dropBlock() {
-        console.log("dropBlock called");
         if (!this.movingBlock || this.gameState !== STATES.PLAYING) return;
         this.gameState = STATES.DROPPING;
         this.movingBlock.body.setVelocityX(0);
@@ -763,6 +759,7 @@ export default class MainScene extends Phaser.Scene {
     }
 
     updateBackground(time) {
+        const { width, height } = this.cameras.main;
         const heightRatio = Math.min(this.score / 35, 1);
         const timeOffset = Math.sin(time / 4500) * 0.04;
         const finalRatio = Phaser.Math.Clamp(heightRatio + timeOffset, 0, 1);
@@ -770,7 +767,7 @@ export default class MainScene extends Phaser.Scene {
         const bottomColor = this.blendColors(0x2f1b34, 0x0e0e18, finalRatio);
         this.bgGraphics.clear();
         this.bgGraphics.fillGradientStyle(topColor, topColor, bottomColor, bottomColor, 1);
-        this.bgGraphics.fillRect(0, 0, 450, 800);
+        this.bgGraphics.fillRect(0, 0, width, height);
         this.stars.forEach(star => {
             const starAlpha = 0.2 + 0.8 * ((Math.sin(time * star.speed + star.alphaOffset) + 1) / 2);
             this.bgGraphics.fillStyle(0xffffff, starAlpha);
@@ -823,16 +820,17 @@ export default class MainScene extends Phaser.Scene {
 
     update(time, delta) {
         this.updateBackground(time);
+        const { width, height } = this.cameras.main;
 
         // Update Start Screen Particles
         if (this.gameState === STATES.START) {
             this.startParticles.forEach(p => {
                 p.obj.x += p.vx;
                 p.obj.y += p.vy;
-                if (p.obj.x < 0) p.obj.x = 450;
-                if (p.obj.x > 450) p.obj.x = 0;
-                if (p.obj.y < 0) p.obj.y = 800;
-                if (p.obj.y > 800) p.obj.y = 0;
+                if (p.obj.x < 0) p.obj.x = width;
+                if (p.obj.x > width) p.obj.x = 0;
+                if (p.obj.y < 0) p.obj.y = height;
+                if (p.obj.y > height) p.obj.y = 0;
             });
         }
 
@@ -842,8 +840,8 @@ export default class MainScene extends Phaser.Scene {
             const speed = baseSpeed * speedMultiplier;
             this.movingBlock.body.setVelocityX(speed * this.movingDirection);
             const halfWidth = this.currentWidth / 2;
-            if (this.movingDirection === 1 && this.movingBlock.x >= 450 - halfWidth) {
-                this.movingBlock.x = 450 - halfWidth;
+            if (this.movingDirection === 1 && this.movingBlock.x >= width - halfWidth) {
+                this.movingBlock.x = width - halfWidth;
                 this.movingDirection = -1;
                 this.movingBlock.body.setVelocityX(-speed);
             } else if (this.movingDirection === -1 && this.movingBlock.x <= halfWidth) {
