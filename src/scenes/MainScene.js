@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+//import Phaser from 'phaser';
 
 const BLOCK_HEIGHT = 50;
 const DROP_HEIGHT = 220;
