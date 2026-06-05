@@ -1,4 +1,4 @@
-import './style.css';
+//import './style.css';
 //import Phaser from 'phaser';
 import MainScene from './scenes/MainScene.js';
 
