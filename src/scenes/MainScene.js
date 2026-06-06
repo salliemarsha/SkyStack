@@ -18,6 +18,24 @@ export default class MainScene extends Phaser.Scene {
         this.gameState = STATES.START;
     }
 
+    preload() {
+        // Preload BGM audio asset
+        this.load.audio('bgm', 'src/assets/bgm.mp3');
+        
+        // Preload SFX audio assets
+        this.load.audio('sfx_click', 'src/assets/click.mp3');
+        this.load.audio('sfx_drop', 'src/assets/drop.mp3');
+        this.load.audio('sfx_gameover', 'src/assets/game%20over.mp3');
+        this.load.audio('sfx_perfect', 'src/assets/perfect.mp3');
+        
+        // Graceful handling if audio fails to load
+        this.load.on('loaderror', (fileObj) => {
+            if (['bgm', 'sfx_click', 'sfx_drop', 'sfx_gameover', 'sfx_perfect'].includes(fileObj.key)) {
+                console.warn(`Audio asset failed to load: ${fileObj.key}. Continuing without it.`);
+            }
+        });
+    }
+
     init(data) {
         this.startImmediate = data && data.startImmediate;
         this.score = 0;
@@ -46,6 +64,15 @@ export default class MainScene extends Phaser.Scene {
 
     create() {
         const { width, height } = this.cameras.main;
+
+        // BGM Integration: Ensure only one instance is playing globally
+        let bgm = this.sound.get('bgm');
+        if (!bgm && this.cache.audio.exists('bgm')) {
+            bgm = this.sound.add('bgm', { volume: 0.3, loop: true });
+        }
+        if (bgm && !bgm.isPlaying) {
+            bgm.play();
+        }
 
         // Static background graphics
         this.bgGraphics = this.add.graphics().setScrollFactor(0).setDepth(0);
@@ -188,6 +215,9 @@ export default class MainScene extends Phaser.Scene {
         });
 
         btnBg.on('pointerup', () => {
+            if (this.cache.audio.exists('sfx_click')) {
+                this.sound.play('sfx_click', { volume: 0.6 });
+            }
             this.startGame();
         });
 
@@ -263,6 +293,9 @@ export default class MainScene extends Phaser.Scene {
         });
 
         btnBg.on('pointerup', () => {
+            if (this.cache.audio.exists('sfx_click')) {
+                this.sound.play('sfx_click', { volume: 0.6 });
+            }
             this.scene.restart({ startImmediate: true });
         });
 
@@ -394,6 +427,10 @@ export default class MainScene extends Phaser.Scene {
     gameOver() {
         this.gameState = STATES.GAMEOVER;
         
+        if (this.cache.audio.exists('sfx_gameover')) {
+            this.sound.play('sfx_gameover', { volume: 0.8 });
+        }
+
         if (this.score > this.highScore) {
             this.highScore = this.score;
             localStorage.setItem('skystack_highscore', this.highScore.toString());
@@ -445,6 +482,11 @@ export default class MainScene extends Phaser.Scene {
 
     dropBlock() {
         if (!this.movingBlock || this.gameState !== STATES.PLAYING) return;
+        
+        if (this.cache.audio.exists('sfx_drop')) {
+            this.sound.play('sfx_drop', { volume: 0.7 });
+        }
+
         this.gameState = STATES.DROPPING;
         this.movingBlock.body.setVelocityX(0);
         this.movingBlock.body.setAllowGravity(true);
@@ -518,6 +560,9 @@ export default class MainScene extends Phaser.Scene {
         const targetY = topBlock.y - BLOCK_HEIGHT;
         this.combo++;
 
+        if (this.cache.audio.exists('sfx_perfect')) {
+            this.sound.play('sfx_perfect', { volume: 0.8 });
+        }
         this.playBeep(true);
         this.showFloatingText(`PERFECT! x${this.combo}`, newX, targetY - 25, '#00ffcc');
 
